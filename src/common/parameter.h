@@ -9,8 +9,12 @@
 
 #include <stdint.h>
 
-// Portable vector types compatible with CUDA/HIP
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
+// Portable vector types compatible with CUDA/HIP.
+// Skip our definitions whenever CUDA/HIP runtime headers are (or may be)
+// pulled in — including for .c files compiled by NVCC's host compiler,
+// where __CUDACC__ is not defined but vector_types.h is still included
+// transitively via device.h.
+#if !defined(__CUDACC__) && !defined(__HIPCC__) && !defined(CUDA_TARGET)
 typedef struct {
     float x, y, z;
 } float3;
