@@ -4,14 +4,13 @@
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
  */
-#include <cuda_profiler_api.h>
-#include <cuda_runtime.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 //---
 
 #include <device.h>
+#include <gpu_profiler.h>
 
 extern "C" {
 #include <atom.h>
@@ -261,7 +260,7 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
     DEBUG_MESSAGE("buildNeighborCUDA begin\n");
     DeviceNeighbor* d_neighbor      = &(neighbor->d_neighbor);
     const int num_threads_per_block = get_cuda_num_threads();
-    cudaProfilerStart();
+    GPU_PROFILE_START("build_neighbor");
 
     int nall = atom->Nlocal + atom->Nghost;
     if (nall > nmax) {
@@ -359,6 +358,6 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
         }
     }
 
-    cudaProfilerStop();
+    GPU_PROFILE_STOP();
     DEBUG_MESSAGE("buildNeighborCUDA end\n");
 }

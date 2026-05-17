@@ -10,9 +10,6 @@
 extern "C" {
 #include <stdio.h>
 //---
-#include <cuda.h>
-#include <driver_types.h>
-//---
 #include <likwid-marker.h>
 //---
 #include <allocate.h>

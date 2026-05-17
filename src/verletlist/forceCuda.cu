@@ -9,12 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 //---
-#include <cuda_profiler_api.h>
-#include <cuda_runtime.h>
-//---
 #include <likwid-marker.h>
 
 #include <device.h>
+#include <gpu_profiler.h>
 
 extern "C" {
 #include <allocate.h>
@@ -261,7 +259,7 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
     // HINT: Run with cuda-memcheck ./MDBench-NVCC in case of error
     // memsetGPU(atom->d_atom.fx, 0, sizeof(MD_FLOAT) * Nlocal * 3);
 
-    cudaProfilerStart();
+    GPU_PROFILE_START("force_lj");
     const int num_blocks = ceil((float)Nlocal / (float)num_threads_per_block);
     double S             = getTimeStamp();
     LIKWID_MARKER_START("force");
@@ -297,7 +295,7 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
 
     cuda_assert("computeForceLJCuda", cudaPeekAtLastError());
     cuda_assert("computeForceLJCuda", cudaDeviceSynchronize());
-    cudaProfilerStop();
+    GPU_PROFILE_STOP();
 
     LIKWID_MARKER_STOP("force");
     double E = getTimeStamp();
