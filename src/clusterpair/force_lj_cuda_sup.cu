@@ -1,3 +1,9 @@
+#ifdef __HIP_PLATFORM_AMD__
+#define FULL_WARP_MASK 0xffffffffffffffffULL
+#else
+#define FULL_WARP_MASK 0xffffffffU
+#endif
+
 extern "C" {
 
 #include <stdio.h>
@@ -238,7 +244,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 
 #ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
         int aj        = cj * CLUSTER_N + cjj;
-        unsigned mask = 0xffffffff;
+        auto mask = FULL_WARP_MASK;
 
         fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 1);
         fcj_buf.y += __shfl_up_sync(mask, fcj_buf.y, 1);
@@ -280,7 +286,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
         MD_FLOAT fix  = fbuf[sci_ci].x;
         MD_FLOAT fiy  = fbuf[sci_ci].y;
         MD_FLOAT fiz  = fbuf[sci_ci].z;
-        unsigned mask = 0xffffffff;
+        auto mask = FULL_WARP_MASK;
         fix += __shfl_down_sync(mask, fix, CLUSTER_M);
         fiy += __shfl_up_sync(mask, fiy, CLUSTER_M);
         fiz += __shfl_down_sync(mask, fiz, CLUSTER_M);
@@ -418,7 +424,7 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
         MD_FLOAT fix  = fbuf[sci_ci].x;
         MD_FLOAT fiy  = fbuf[sci_ci].y;
         MD_FLOAT fiz  = fbuf[sci_ci].z;
-        unsigned mask = 0xffffffff;
+        auto mask = FULL_WARP_MASK;
 
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
 

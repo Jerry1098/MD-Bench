@@ -7,6 +7,12 @@
 
 #include <device.h>
 
+#ifdef __HIP_PLATFORM_AMD__
+#define FULL_WARP_MASK 0xffffffffffffffffULL
+#else
+#define FULL_WARP_MASK 0xffffffffU
+#endif
+
 extern "C" {
 #include <stdio.h>
 //---
@@ -275,7 +281,7 @@ __global__ void computeForceLJCudaFullNeigh(
     // It is very unlikely that M > 32, but we keep this check here to
     // avoid any issues in such situations
 #if CLUSTER_M <= 32
-    unsigned mask = 0xffffffff;
+    auto mask = FULL_WARP_MASK;
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
     for (int offset = CLUSTER_M / 2; offset > 0; offset /= 2) {
 #ifdef CUDA_TARGET
@@ -422,7 +428,7 @@ __global__ void computeForceLJCudaHalfNeigh(
     atomicAdd(&ci_f[CL_Y_INDEX_3D(cii)], fiy);
     atomicAdd(&ci_f[CL_Z_INDEX_3D(cii)], fiz);
 #else
-    unsigned mask = 0xffffffff;
+    auto mask = FULL_WARP_MASK;
     fix += __shfl_down_sync(mask, fix, CLUSTER_M);
     fiy += __shfl_up_sync(mask, fiy, CLUSTER_M);
     fiz += __shfl_down_sync(mask, fiz, CLUSTER_M);
