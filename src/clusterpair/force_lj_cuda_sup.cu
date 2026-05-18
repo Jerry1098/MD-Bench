@@ -26,6 +26,7 @@ extern MD_FLOAT* cuda_cl_v;
 extern MD_FLOAT* cuda_cl_f;
 extern int* cuda_neighbors;
 extern int* cuda_numneigh;
+extern int* cuda_numneigh_inner;
 extern int* cuda_natoms;
 extern int* natoms;
 extern int* ngatoms;
@@ -524,7 +525,7 @@ extern "C" double computeForceLJCudaSup(
         computeForceLJCudaSup_halfwarp<<<grid_size, block_size>>>(cuda_cl_x,
             cuda_cl_f,
             atom->Nclusters_local,
-            cuda_numneigh,
+            cuda_numneigh_inner,
             cuda_neighbors,
             neighbor->maxneighs,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
@@ -543,7 +544,7 @@ extern "C" double computeForceLJCudaSup(
         computeForceLJCudaSup_fullwarp<<<grid_size, block_size>>>(cuda_cl_x,
             cuda_cl_f,
             atom->Nclusters_local,
-            cuda_numneigh,
+            cuda_numneigh_inner,
             cuda_neighbors,
             neighbor->maxneighs,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE

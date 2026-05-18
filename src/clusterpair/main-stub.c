@@ -64,8 +64,10 @@ void createNeighbors(
     const int maxneighs       = nneighs * nreps;
     const int ncj             = get_ncj_from_nci(atom->Nclusters_local);
     const unsigned int imask  = NBNXN_INTERACTION_MASK_ALL;
-    neighbor->numneigh        = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->numneigh_masked = (int*)malloc(atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh              = (int*)malloc(atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_masked       = (int*)malloc(atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_inner        = (int*)malloc(atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_inner_masked = (int*)malloc(atom->Nclusters_max * sizeof(int));
     neighbor->neighbors = (int*)malloc(atom->Nclusters_max * maxneighs * sizeof(int));
     neighbor->neighbors_imask = (unsigned int*)malloc(
         atom->Nclusters_max * maxneighs * sizeof(unsigned int));
@@ -120,8 +122,10 @@ void createNeighbors(
             }
         }
 
-        neighbor->numneigh[ci]        = nneighs * nreps;
-        neighbor->numneigh_masked[ci] = (masked == 1) ? (nneighs * nreps) : 0;
+        neighbor->numneigh[ci]              = nneighs * nreps;
+        neighbor->numneigh_masked[ci]       = (masked == 1) ? (nneighs * nreps) : 0;
+        neighbor->numneigh_inner[ci]        = nneighs * nreps;
+        neighbor->numneigh_inner_masked[ci] = (masked == 1) ? (nneighs * nreps) : 0;
     }
 }
 

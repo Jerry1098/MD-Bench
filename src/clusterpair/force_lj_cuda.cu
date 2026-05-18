@@ -56,6 +56,7 @@ MD_FLOAT* cuda_cl_v;
 MD_FLOAT* cuda_cl_f;
 int* cuda_neighbors;
 int* cuda_numneigh;
+int* cuda_numneigh_inner;
 int* cuda_natoms;
 int* natoms;
 int* ngatoms;
@@ -108,8 +109,9 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
     cuda_PBCx      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     cuda_PBCy      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     cuda_PBCz      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    cuda_numneigh  = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
-    cuda_neighbors = (int*)allocateGPU(
+    cuda_numneigh       = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
+    cuda_numneigh_inner = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
+    cuda_neighbors      = (int*)allocateGPU(
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
     natoms  = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     ngatoms = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
@@ -155,6 +157,9 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
 #endif
 
     memcpyToGPU(cuda_numneigh, neighbor->numneigh, atom->Nclusters_local * sizeof(int));
+    memcpyToGPU(cuda_numneigh_inner,
+        neighbor->numneigh_inner,
+        atom->Nclusters_local * sizeof(int));
     memcpyToGPU(cuda_neighbors,
         neighbor->neighbors,
         atom->Nclusters_local * neighbor->maxneighs * sizeof(int));
@@ -180,6 +185,7 @@ extern "C" void cudaDeviceFree(Parameter* param)
     cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_t));
 #endif
     cuda_assert("cudaDeviceFree", cudaFree(cuda_numneigh));
+    cuda_assert("cudaDeviceFree", cudaFree(cuda_numneigh_inner));
     cuda_assert("cudaDeviceFree", cudaFree(cuda_neighbors));
     cuda_assert("cudaDeviceFree", cudaFree(cuda_natoms));
     cuda_assert("cudaDeviceFree", cudaFree(cuda_border_map));
@@ -658,7 +664,7 @@ extern "C" double computeForceLJCuda(
             cuda_cl_f,
             atom->Nclusters_local,
             atom->Nclusters_max,
-            cuda_numneigh,
+            cuda_numneigh_inner,
             cuda_neighbors,
             neighbor->maxneighs);
     } else {
@@ -678,7 +684,7 @@ extern "C" double computeForceLJCuda(
             cuda_cl_f,
             atom->Nclusters_local,
             atom->Nclusters_max,
-            cuda_numneigh,
+            cuda_numneigh_inner,
             cuda_neighbors,
             neighbor->maxneighs);
     }
@@ -736,6 +742,8 @@ extern "C" void growClustersCUDA(Atom* atom)
         cuda_jclusters_natoms = (int*)reallocateGPU(cuda_jclusters_natoms,
             atom->Nclusters_max * sizeof(int));
         cuda_numneigh         = (int*)reallocateGPU(cuda_numneigh,
+            atom->Nclusters_max * sizeof(int));
+        cuda_numneigh_inner   = (int*)reallocateGPU(cuda_numneigh_inner,
             atom->Nclusters_max * sizeof(int));
 
         free(natoms);

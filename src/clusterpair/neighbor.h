@@ -42,6 +42,10 @@ typedef struct {
     int maxneighs;
     int* numneigh;
     int* numneigh_masked;
+    // Inner sub-list counts: force kernels iterate only [0, numneigh_inner).
+    // When the double-cutoff toggle is off these mirror numneigh*.
+    int* numneigh_inner;
+    int* numneigh_inner_masked;
     int half_neigh;
     int* neighbors;
     unsigned int* neighbors_imask;

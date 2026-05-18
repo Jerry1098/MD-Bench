@@ -97,16 +97,18 @@ void initParameter(Parameter* param)
     param->pbc_x            = 1;
     param->pbc_y            = 1;
     param->pbc_z            = 1;
-    param->cutforce         = 2.5;
-    param->skin             = 0.3;
-    param->cutneigh         = param->cutforce + param->skin;
+    param->cutforce            = 2.5;
+    param->skin                = 0.3;
+    param->skin_inner          = 0.0;
+    param->cutneigh            = param->cutforce + param->skin;
+    param->enable_double_cutoff = 1;
     param->temp             = 1.44;
     param->nstat            = 100;
     param->mass             = 1.0;
     param->dtforce          = 0.5 * param->dt;
     param->reneigh_every    = 20;
     param->resort_every     = 400;
-    param->prune_every      = 1000;
+    param->prune_every      = 5;
     param->x_out_every      = 20;
     param->v_out_every      = 5;
     param->half_neigh       = 0;
@@ -121,6 +123,13 @@ void initParameter(Parameter* param)
     param->method        = 0;
     param->balance_every = param->reneigh_every;
     param->setup         = 1;
+
+#ifdef _OPENMP
+    // Use static scheduling as default
+    if (getenv("OMP_SCHEDULE") == NULL) {
+        omp_set_schedule(omp_sched_static, 0);
+    }
+#endif
 }
 
 void readTypesFile(Parameter* param)
@@ -203,12 +212,14 @@ void readParameter(Parameter* param, const char* filename)
         char* tok = strtok(line, " \t\n\r");
         char* val = strtok(NULL, " \t\n\r");
 
+// Exact-match: strncmp with the name length was a prefix match, so e.g.
+// "skin_inner" matched both `skin` and `skin_inner` and clobbered the first.
 #define PARSE_PARAM(p, f)                                                                \
-    if (strncmp(tok, #p, sizeof(#p) / sizeof(#p[0]) - 1) == 0) {                         \
+    if (strcmp(tok, #p) == 0) {                                                          \
         param->p = f(val);                                                               \
     }
 #define PARSE_PARAM_FLAG(p, f, flag)                                                     \
-    if (strncmp(tok, #p, sizeof(#p) / sizeof(#p[0]) - 1) == 0) {                         \
+    if (strcmp(tok, #p) == 0) {                                                          \
         param->p = f(val);                                                               \
         flag     = 1;                                                                    \
     }
@@ -229,6 +240,8 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_REAL(dt);
             PARSE_REAL(cutforce);
             PARSE_REAL(skin);
+            PARSE_REAL(skin_inner);
+            PARSE_INT(enable_double_cutoff);
             PARSE_REAL(temp);
             PARSE_REAL(mass);
             PARSE_REAL(proc_freq);
@@ -275,6 +288,14 @@ void readParameter(Parameter* param, const char* filename)
 
     // Update balance parameter, 10 could be change
     param->balance_every *= param->reneigh_every;
+
+    if (param->skin_inner > param->skin) {
+        fprintf(stderr,
+            "WARN: skin_inner (%.6e) > skin (%.6e); clamping.\n",
+            (double)param->skin_inner,
+            (double)param->skin);
+        param->skin_inner = param->skin;
+    }
     fclose(fp);
 }
 
@@ -379,6 +400,10 @@ void printParameter(Parameter* param)
     fprintf(stdout, "    Timestep (dt):                     %.6e\n", param->dt);
     fprintf(stdout, "    Cutoff radius:                     %.6e\n", param->cutforce);
     fprintf(stdout, "    Skin distance:                     %.6e\n", param->skin);
+    fprintf(stdout, "    Skin distance (inner):             %.6e\n", param->skin_inner);
+    fprintf(stdout,
+        "    Double cutoff:                     %s\n",
+        param->enable_double_cutoff ? "yes" : "no");
     fprintf(stdout,
         "    Half neighbor-lists:               %s\n",
         param->half_neigh ? "yes" : "no");

@@ -223,6 +223,22 @@ int main(int argc, char** argv)
             param.skin = atof(argv[++i]);
             continue;
         }
+        if ((strcmp(argv[i], "--skin-inner") == 0)) {
+            param.skin_inner = atof(argv[++i]);
+            continue;
+        }
+        if ((strcmp(argv[i], "--prune-every") == 0)) {
+            param.prune_every = atoi(argv[++i]);
+            continue;
+        }
+        if ((strcmp(argv[i], "--reneigh-every") == 0)) {
+            param.reneigh_every = atoi(argv[++i]);
+            continue;
+        }
+        if ((strcmp(argv[i], "--double-cutoff") == 0)) {
+            param.enable_double_cutoff = atoi(argv[++i]);
+            continue;
+        }
         if ((strcmp(argv[i], "--freq") == 0)) {
             param.proc_freq = atof(argv[++i]);
             continue;
@@ -260,7 +276,11 @@ int main(int argc, char** argv)
             printf("-nx/-ny/-nz <int>:    set linear dimension of systembox in x/y/z "
                    "direction\n");
             printf("-r / --radius <real>: set cutoff radius\n");
-            printf("-s / --skin <real>:   set skin (verlet buffer)\n");
+            printf("-s / --skin <real>:   set skin (outer Verlet buffer)\n");
+            printf("--skin-inner <real>:  inner skin (cutforce + skin_inner = inner cutoff)\n");
+            printf("--prune-every <int>:  pruning frequency (steps between inner-list refresh)\n");
+            printf("--reneigh-every <int>: neighbor-list rebuild frequency (steps)\n");
+            printf("--double-cutoff <0|1>: enable (1, default) or disable (0) double-cutoff scheme\n");
             printf("--freq <real>:        processor frequency (GHz)\n");
             printf("--vtk <string>:       VTK file for visualization\n");
             printf("--xtc <string>:       XTC file for visualization\n");
@@ -327,8 +347,14 @@ int main(int argc, char** argv)
         initialIntegrate(&param, &atom);
 
         if ((n + 1) % param.reneigh_every) {
-            if (!((n + 1) % param.prune_every)) {
+            if (param.enable_double_cutoff && !((n + 1) % param.prune_every)) {
+#ifdef CUDA_TARGET
+                copyDataFromCUDADevice(&param, &atom);
+#endif
                 pruneNeighbor(&param, &atom, &neighbor);
+#ifdef CUDA_TARGET
+                copyDataToCUDADevice(&param, &atom, &neighbor);
+#endif
             }
 
             timer[FORWARD] += forward(&comm, &atom, &param);
