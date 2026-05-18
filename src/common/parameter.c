@@ -101,7 +101,7 @@ void initParameter(Parameter* param)
     param->skin                = 0.3;
     param->skin_inner          = 0.0;
     param->cutneigh            = param->cutforce + param->skin;
-    param->enable_double_cutoff = 1;
+    param->enable_double_cutoff = 0;
     param->temp             = 1.44;
     param->nstat            = 100;
     param->mass             = 1.0;
