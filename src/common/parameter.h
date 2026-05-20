@@ -101,10 +101,9 @@ typedef struct {
     MD_FLOAT dt;
     MD_FLOAT dtforce;
     MD_FLOAT skin;
-    MD_FLOAT skin_inner;
+    MD_FLOAT outer_skin;
     MD_FLOAT cutforce;
     MD_FLOAT cutneigh;
-    int enable_double_cutoff;
     int nx, ny, nz;
     int pbc_x, pbc_y, pbc_z;
     MD_FLOAT lattice;

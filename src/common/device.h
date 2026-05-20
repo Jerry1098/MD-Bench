@@ -26,6 +26,7 @@
 #define GPU_MEMSET(d, v, n) cudaMemset(d, v, n)
 #define GPU_H2D             cudaMemcpyHostToDevice
 #define GPU_D2H             cudaMemcpyDeviceToHost
+#define GPU_D2D             cudaMemcpyDeviceToDevice
 #elif CUDA_TARGET == 1
 #define __HIP_PLATFORM_AMD__
 #include <hip/hip_runtime.h>
@@ -40,6 +41,7 @@
 #define GPU_MEMSET(d, v, n) hipMemset(d, v, n)
 #define GPU_H2D             hipMemcpyHostToDevice
 #define GPU_D2H             hipMemcpyDeviceToHost
+#define GPU_D2D             hipMemcpyDeviceToDevice
 #endif
 #ifdef __cplusplus
 extern "C" {
@@ -53,6 +55,7 @@ extern void* allocateGPU(size_t bytesize);
 extern void* reallocateGPU(void* ptr, size_t new_bytesize);
 extern void memcpyToGPU(void* d_ptr, void* h_ptr, size_t bytesize);
 extern void memcpyFromGPU(void* h_ptr, void* d_ptr, size_t bytesize);
+extern void memcpyOnGPU(void* d_dst, void* d_src, size_t bytesize);
 extern void memsetGPU(void* d_ptr, int value, size_t bytesize);
 #ifdef __cplusplus
 }

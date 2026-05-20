@@ -37,6 +37,7 @@
 extern void copyDataToCUDADevice(Parameter*, Atom*, Neighbor*);
 extern void copyDataFromCUDADevice(Parameter*, Atom*);
 extern void cudaDeviceFree(Parameter*);
+extern void pruneNeighborCUDA(Parameter*, Atom*, Neighbor*);
 
 #define HLINE                                                                            \
     "----------------------------------------------------------------------------\n"
@@ -223,8 +224,8 @@ int main(int argc, char** argv)
             param.skin = atof(argv[++i]);
             continue;
         }
-        if ((strcmp(argv[i], "--skin-inner") == 0)) {
-            param.skin_inner = atof(argv[++i]);
+        if ((strcmp(argv[i], "--outer-skin") == 0)) {
+            param.outer_skin = atof(argv[++i]);
             continue;
         }
         if ((strcmp(argv[i], "--prune-every") == 0)) {
@@ -233,10 +234,6 @@ int main(int argc, char** argv)
         }
         if ((strcmp(argv[i], "--reneigh-every") == 0)) {
             param.reneigh_every = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--double-cutoff") == 0)) {
-            param.enable_double_cutoff = atoi(argv[++i]);
             continue;
         }
         if ((strcmp(argv[i], "--freq") == 0)) {
@@ -276,11 +273,10 @@ int main(int argc, char** argv)
             printf("-nx/-ny/-nz <int>:    set linear dimension of systembox in x/y/z "
                    "direction\n");
             printf("-r / --radius <real>: set cutoff radius\n");
-            printf("-s / --skin <real>:   set skin (outer Verlet buffer)\n");
-            printf("--skin-inner <real>:  inner skin (cutforce + skin_inner = inner cutoff)\n");
+            printf("-s / --skin <real>:   set skin (Verlet buffer for the force-evaluation list)\n");
+            printf("--outer-skin <real>:  additive outer skin (outer cutoff = cutforce + skin + outer_skin; >0 enables double-cutoff)\n");
             printf("--prune-every <int>:  pruning frequency (steps between inner-list refresh)\n");
             printf("--reneigh-every <int>: neighbor-list rebuild frequency (steps)\n");
-            printf("--double-cutoff <0|1>: enable (1, default) or disable (0) double-cutoff scheme\n");
             printf("--freq <real>:        processor frequency (GHz)\n");
             printf("--vtk <string>:       VTK file for visualization\n");
             printf("--xtc <string>:       XTC file for visualization\n");
@@ -297,7 +293,8 @@ int main(int argc, char** argv)
         exit(0);
     }
 
-    param.cutneigh = param.cutforce + param.skin;
+    param.outer_skin = MAX(param.outer_skin, 0.0);
+    param.cutneigh = param.cutforce + param.skin + param.outer_skin;
     timer[SETUP]   = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
 
     if (comm.myproc == 0) {
@@ -347,14 +344,14 @@ int main(int argc, char** argv)
         initialIntegrate(&param, &atom);
 
         if ((n + 1) % param.reneigh_every) {
-            if (param.enable_double_cutoff && !((n + 1) % param.prune_every)) {
+            if (param.outer_skin > 0.0 && !((n + 1) % param.prune_every)) {
+                double prune_start = getTimeStamp();
 #ifdef CUDA_TARGET
-                copyDataFromCUDADevice(&param, &atom);
-#endif
+                pruneNeighborCUDA(&param, &atom, &neighbor);
+#else
                 pruneNeighbor(&param, &atom, &neighbor);
-#ifdef CUDA_TARGET
-                copyDataToCUDADevice(&param, &atom, &neighbor);
 #endif
+                timer[NEIGH] += getTimeStamp() - prune_start;
             }
 
             timer[FORWARD] += forward(&comm, &atom, &param);

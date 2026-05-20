@@ -146,12 +146,10 @@ void setupNeighbor(Parameter* param, Atom* atom)
     binsizey   = (yhi - ylo) / nbiny;
     bininvx    = 1.0 / binsizex;
     bininvy    = 1.0 / binsizey;
-    cutneighsq = cutneigh * cutneigh;
-    {
-        const MD_FLOAT cut_inner = param->cutforce + param->skin_inner;
-        cutneigh_inner_sq        = cut_inner * cut_inner;
-    }
-    dcut_enabled = param->enable_double_cutoff;
+    cutneighsq               = cutneigh * cutneigh;
+    const MD_FLOAT cut_inner = param->cutforce + param->skin;
+    cutneigh_inner_sq        = cut_inner * cut_inner;
+    dcut_enabled             = (cutneigh_inner_sq < cutneighsq);
 
     coord   = xlo - cutneigh - SMALL * xprd;
     mbinxlo = (int)(coord * bininvx);

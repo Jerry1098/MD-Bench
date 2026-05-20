@@ -56,6 +56,11 @@ void memcpyFromGPU(void* h_ptr, void* d_ptr, size_t bytesize)
 #endif
 }
 
+void memcpyOnGPU(void* d_dst, void* d_src, size_t bytesize)
+{
+    cuda_assert("memcpyOnGPU", GPU_MEMCPY(d_dst, d_src, bytesize, GPU_D2D));
+}
+
 void memsetGPU(void* d_ptr, int value, size_t bytesize)
 {
     cuda_assert("memsetGPU", GPU_MEMSET(d_ptr, value, bytesize));

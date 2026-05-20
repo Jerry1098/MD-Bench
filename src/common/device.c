@@ -16,5 +16,6 @@ void* allocateGPU(size_t bytesize) { return NULL; }
 void* reallocateGPU(void* ptr, size_t new_bytesize) { return NULL; }
 void memcpyToGPU(void* d_ptr, void* h_ptr, size_t bytesize) {}
 void memcpyFromGPU(void* h_ptr, void* d_ptr, size_t bytesize) {}
+void memcpyOnGPU(void* d_dst, void* d_src, size_t bytesize) {}
 void memsetGPU(void* d_ptr, int value, size_t bytesize) {}
 #endif

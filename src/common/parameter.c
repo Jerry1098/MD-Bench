@@ -99,9 +99,8 @@ void initParameter(Parameter* param)
     param->pbc_z            = 1;
     param->cutforce            = 2.5;
     param->skin                = 0.3;
-    param->skin_inner          = 0.0;
-    param->cutneigh            = param->cutforce + param->skin;
-    param->enable_double_cutoff = 0;
+    param->outer_skin          = 0.0;
+    param->cutneigh            = param->cutforce + param->skin + param->outer_skin;
     param->temp             = 1.44;
     param->nstat            = 100;
     param->mass             = 1.0;
@@ -213,7 +212,7 @@ void readParameter(Parameter* param, const char* filename)
         char* val = strtok(NULL, " \t\n\r");
 
 // Exact-match: strncmp with the name length was a prefix match, so e.g.
-// "skin_inner" matched both `skin` and `skin_inner` and clobbered the first.
+// "outer_skin" matched both `skin` and `outer_skin` and clobbered the first.
 #define PARSE_PARAM(p, f)                                                                \
     if (strcmp(tok, #p) == 0) {                                                          \
         param->p = f(val);                                                               \
@@ -240,8 +239,7 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_REAL(dt);
             PARSE_REAL(cutforce);
             PARSE_REAL(skin);
-            PARSE_REAL(skin_inner);
-            PARSE_INT(enable_double_cutoff);
+            PARSE_REAL(outer_skin);
             PARSE_REAL(temp);
             PARSE_REAL(mass);
             PARSE_REAL(proc_freq);
@@ -289,13 +287,13 @@ void readParameter(Parameter* param, const char* filename)
     // Update balance parameter, 10 could be change
     param->balance_every *= param->reneigh_every;
 
-    if (param->skin_inner > param->skin) {
+    if (param->outer_skin < 0.0) {
         fprintf(stderr,
-            "WARN: skin_inner (%.6e) > skin (%.6e); clamping.\n",
-            (double)param->skin_inner,
-            (double)param->skin);
-        param->skin_inner = param->skin;
+            "WARN: outer_skin (%.6e) < 0; clamping to 0.\n",
+            (double)param->outer_skin);
+        param->outer_skin = 0.0;
     }
+    param->cutneigh = param->cutforce + param->skin + param->outer_skin;
     fclose(fp);
 }
 
@@ -400,10 +398,9 @@ void printParameter(Parameter* param)
     fprintf(stdout, "    Timestep (dt):                     %.6e\n", param->dt);
     fprintf(stdout, "    Cutoff radius:                     %.6e\n", param->cutforce);
     fprintf(stdout, "    Skin distance:                     %.6e\n", param->skin);
-    fprintf(stdout, "    Skin distance (inner):             %.6e\n", param->skin_inner);
     fprintf(stdout,
-        "    Double cutoff:                     %s\n",
-        param->enable_double_cutoff ? "yes" : "no");
+        "    Outer skin (additive):             %.6e\n",
+        param->outer_skin);
     fprintf(stdout,
         "    Half neighbor-lists:               %s\n",
         param->half_neigh ? "yes" : "no");

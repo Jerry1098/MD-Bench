@@ -42,19 +42,16 @@ typedef struct {
     int maxneighs;
     int* numneigh;
     int* numneigh_masked;
-    // Inner sub-list counts: force kernels iterate only [0, numneigh_inner).
-    // When the double-cutoff toggle is off these mirror numneigh*.
     int* numneigh_inner;
     int* numneigh_inner_masked;
     int half_neigh;
     int* neighbors;
     unsigned int* neighbors_imask;
     // MPI
-    int Nshell;         // # of cluster in listShell(Cluster here cover all possible ghost
-                        // interactions)
-    int* numNeighShell; // # of neighs for each atom in listShell
-    int* neighshell;    // list of neighs for each atom in listShell
-    int* listshell;     // Atoms to compute the force
+    int Nshell;
+    int* numNeighShell;
+    int* neighshell;
+    int* listshell;
 } Neighbor;
 
 typedef void (*BuildNeighborFunction)(Atom*, Neighbor*);
