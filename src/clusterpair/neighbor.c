@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <allocate.h>
 #include <atom.h>
 #include <force.h>
 #include <neighbor.h>
@@ -183,7 +184,7 @@ void setupNeighbor(Parameter* param, Atom* atom)
     if (stencil) {
         free(stencil);
     }
-    stencil  = (int*)malloc((2 * nexty + 1) * (2 * nextx + 1) * sizeof(int));
+    stencil  = (int*)allocate(ALIGNMENT, (2 * nexty + 1) * (2 * nextx + 1) * sizeof(int));
     nstencil = 0;
 
     for (int j = -nexty; j <= nexty; j++) {
@@ -207,10 +208,10 @@ void setupNeighbor(Parameter* param, Atom* atom)
         free(bin_clusters);
     }
     mbins         = mbinx * mbiny;
-    bincount      = (int*)malloc(mbins * sizeof(int));
-    bins          = (int*)malloc(mbins * atoms_per_bin * sizeof(int));
-    bin_nclusters = (int*)malloc(mbins * sizeof(int));
-    bin_clusters  = (int*)malloc(mbins * clusters_per_bin * sizeof(int));
+    bincount      = (int*)allocate(ALIGNMENT, mbins * sizeof(int));
+    bins          = (int*)allocate(ALIGNMENT, mbins * atoms_per_bin * sizeof(int));
+    bin_nclusters = (int*)allocate(ALIGNMENT, mbins * sizeof(int));
+    bin_clusters  = (int*)allocate(ALIGNMENT, mbins * clusters_per_bin * sizeof(int));
 
     /*
     DEBUG_MESSAGE("lo, hi = (%e, %e, %e), (%e, %e, %e)\n", xlo, ylo, zlo, xhi, yhi, zhi);
@@ -299,12 +300,12 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         if (neighbor->numneigh_inner_masked) free(neighbor->numneigh_inner_masked);
         if (neighbor->neighbors) free(neighbor->neighbors);
         if (neighbor->neighbors_imask) free(neighbor->neighbors_imask);
-        neighbor->numneigh              = (int*)malloc(nmax * sizeof(int));
-        neighbor->numneigh_masked       = (int*)malloc(nmax * sizeof(int));
-        neighbor->numneigh_inner        = (int*)malloc(nmax * sizeof(int));
-        neighbor->numneigh_inner_masked = (int*)malloc(nmax * sizeof(int));
-        neighbor->neighbors = (int*)malloc(nmax * neighbor->maxneighs * sizeof(int));
-        neighbor->neighbors_imask = (unsigned int*)malloc(
+        neighbor->numneigh              = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->numneigh_masked       = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->numneigh_inner        = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->numneigh_inner_masked = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
+        neighbor->neighbors_imask = (unsigned int*)allocate(ALIGNMENT,
             nmax * neighbor->maxneighs * sizeof(unsigned int));
     }
 
@@ -708,8 +709,8 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             fflush(stdout);
             free(neighbor->neighbors);
             free(neighbor->neighbors_imask);
-            neighbor->neighbors = (int*)malloc(nmax * neighbor->maxneighs * sizeof(int));
-            neighbor->neighbors_imask = (unsigned int*)malloc(
+            neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
+            neighbor->neighbors_imask = (unsigned int*)allocate(ALIGNMENT,
                 nmax * neighbor->maxneighs * sizeof(unsigned int));
 #ifdef CUDA_TARGET
             growNeighborCUDA(atom, neighbor);
@@ -788,9 +789,9 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
         if (neighbor->numneigh) free(neighbor->numneigh);
         if (neighbor->numneigh_inner) free(neighbor->numneigh_inner);
         if (neighbor->neighbors) free(neighbor->neighbors);
-        neighbor->numneigh       = (int*)malloc(nmax * sizeof(int));
-        neighbor->numneigh_inner = (int*)malloc(nmax * sizeof(int));
-        neighbor->neighbors = (int*)malloc(nmax * neighbor->maxneighs * sizeof(int));
+        neighbor->numneigh       = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->numneigh_inner = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
     }
 
     MD_FLOAT bbx    = 0.5 * (binsizex + binsizex);
@@ -958,7 +959,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             neighbor->maxneighs = new_maxneighs * 1.2;
             fprintf(stdout, "RESIZE %d\n", neighbor->maxneighs);
             free(neighbor->neighbors);
-            neighbor->neighbors = (int*)malloc(
+            neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
         }
     }
@@ -1490,7 +1491,7 @@ void binAtoms(Atom* atom)
         if (resize) {
             free(bins);
             atoms_per_bin *= 2;
-            bins = (int*)malloc(mbins * atoms_per_bin * sizeof(int));
+            bins = (int*)allocate(ALIGNMENT, mbins * atoms_per_bin * sizeof(int));
         }
     }
 
@@ -2129,7 +2130,7 @@ void binJClusters(Parameter* param, Atom* atom)
         if (resize) {
             free(bin_clusters);
             clusters_per_bin *= 2;
-            bin_clusters = (int*)malloc(mbins * clusters_per_bin * sizeof(int));
+            bin_clusters = (int*)allocate(ALIGNMENT, mbins * clusters_per_bin * sizeof(int));
         }
     }
 
@@ -2287,8 +2288,8 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
     int Ncluster_local = atom->Nclusters_local;
     int Nclusterghost  = atom->Nclusters_ghost;
     if (neighbor->listshell) free(neighbor->listshell);
-    neighbor->listshell = (int*)malloc(Nclusterghost * sizeof(int));
-    int* listzone       = (int*)malloc(8 * Nclusterghost * sizeof(int));
+    neighbor->listshell = (int*)allocate(ALIGNMENT, Nclusterghost * sizeof(int));
+    int* listzone       = (int*)allocate(ALIGNMENT, 8 * Nclusterghost * sizeof(int));
     int countCluster[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Selecting ghost atoms for interaction and putting them into regions
@@ -2312,8 +2313,8 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
     neighbor->Nshell = Nshell;
     if (neighbor->numNeighShell) free(neighbor->numNeighShell);
     if (neighbor->neighshell) free(neighbor->neighshell);
-    neighbor->neighshell    = (int*)malloc(Nshell * neighbor->maxneighs * sizeof(int));
-    neighbor->numNeighShell = (int*)malloc(Nshell * sizeof(int));
+    neighbor->neighshell    = (int*)allocate(ALIGNMENT, Nshell * neighbor->maxneighs * sizeof(int));
+    neighbor->numNeighShell = (int*)allocate(ALIGNMENT, Nshell * sizeof(int));
 
     int resize = 1;
 
@@ -2359,7 +2360,7 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
 
         if (resize) {
             free(neighbor->neighshell);
-            neighbor->neighshell = (int*)malloc(
+            neighbor->neighshell = (int*)allocate(ALIGNMENT,
                 Nshell * neighbor->maxneighs * sizeof(int));
         }
     }
