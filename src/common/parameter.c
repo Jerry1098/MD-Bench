@@ -211,14 +211,14 @@ void readParameter(Parameter* param, const char* filename)
         char* tok = strtok(line, " \t\n\r");
         char* val = strtok(NULL, " \t\n\r");
 
-// Exact-match: strncmp with the name length was a prefix match, so e.g.
-// "outer_skin" matched both `skin` and `outer_skin` and clobbered the first.
+#define PARAM_NAME_LEN(p)   (sizeof(#p) / sizeof(#p[0]) - 1)
+#define PARAM_MATCH(tok, p) (strlen(tok) == PARAM_NAME_LEN(p) && strncmp(tok, #p, PARAM_NAME_LEN(p)) == 0)
 #define PARSE_PARAM(p, f)                                                                \
-    if (strcmp(tok, #p) == 0) {                                                          \
+    if (PARAM_MATCH(tok, p)) {                                                           \
         param->p = f(val);                                                               \
     }
 #define PARSE_PARAM_FLAG(p, f, flag)                                                     \
-    if (strcmp(tok, #p) == 0) {                                                          \
+    if (PARAM_MATCH(tok, p)) {                                                           \
         param->p = f(val);                                                               \
         flag     = 1;                                                                    \
     }
@@ -287,12 +287,9 @@ void readParameter(Parameter* param, const char* filename)
     // Update balance parameter, 10 could be change
     param->balance_every *= param->reneigh_every;
 
-    if (param->outer_skin < 0.0) {
-        fprintf(stderr,
-            "WARN: outer_skin (%.6e) < 0; clamping to 0.\n",
-            (double)param->outer_skin);
-        param->outer_skin = 0.0;
-    }
+    // Clamp outer skin parameter to 0.0 if required
+    param->outer_skin = MAX(param->outer_skin, 0.0);
+
     param->cutneigh = param->cutforce + param->skin + param->outer_skin;
     fclose(fp);
 }
