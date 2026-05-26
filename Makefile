@@ -121,6 +121,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/sim_copper_fcc_regression.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_energy_lj on $(TARGET)"
 	@bash tests/regression_energy_lj.sh ./$(TARGET)
+	@echo "===>  RUNNING  test_double_cutoff on $(TARGET)"
+	@bash tests/test_double_cutoff.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_scheme_equiv (geometric)"
 	@bash tests/regression_scheme_equiv.sh
 	@echo "===>  RUNNING  regression_scheme_equiv (single)"
@@ -133,8 +135,6 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_data_layout.sh
 	@echo "===>  RUNNING  test_mpi"
 	@bash tests/test_mpi.sh
-	@echo "===>  RUNNING  test_double_cutoff"
-	@bash tests/test_double_cutoff.sh ./$(TARGET)
 
 TEST_COMMON_SRCS := $(COMMON_DIR)/parameter.c $(COMMON_DIR)/box.c $(COMMON_DIR)/thermo.c $(COMMON_DIR)/allocate.c $(COMMON_DIR)/util.c
 TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neighbor.c $(SRC_ROOT)/clusterpair/pbc.c $(SRC_ROOT)/clusterpair/integrate.c
