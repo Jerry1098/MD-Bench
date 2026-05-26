@@ -44,6 +44,7 @@ static int nmax;
 static int nstencil; // # of bins in stencil
 static int* stencil; // stencil list of bin offsets
 static MD_FLOAT binsizex, binsizey;
+static int* is_inner_buf;  // reusable scratch for pruneNeighbor*, sized by maxneighs
 
 static int coord2bin(MD_FLOAT, MD_FLOAT);
 static MD_FLOAT bindist(int, int);
@@ -78,6 +79,7 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     } else {
         neighbor->maxneighs = 200;
     }
+    is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
     neighbor->numneigh              = NULL;
     neighbor->numneigh_masked       = NULL;
     neighbor->numneigh_inner        = NULL;
@@ -709,9 +711,12 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             fflush(stdout);
             free(neighbor->neighbors);
             free(neighbor->neighbors_imask);
+            free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
             neighbor->neighbors_imask = (unsigned int*)allocate(ALIGNMENT,
                 nmax * neighbor->maxneighs * sizeof(unsigned int));
+            is_inner_buf = (int*)allocate(ALIGNMENT,
+                neighbor->maxneighs * sizeof(int));
 #ifdef CUDA_TARGET
             growNeighborCUDA(atom, neighbor);
 #endif
@@ -959,8 +964,11 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             neighbor->maxneighs = new_maxneighs * 1.2;
             fprintf(stdout, "RESIZE %d\n", neighbor->maxneighs);
             free(neighbor->neighbors);
+            free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
+            is_inner_buf = (int*)allocate(ALIGNMENT,
+                neighbor->maxneighs * sizeof(int));
         }
     }
     // if (atom->Nclusters_local > 0) debug_check_supercluster_neighbors(atom, neighbor,
@@ -1130,6 +1138,8 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
     const int nbM        = atom->Nclusters_local;
     const int nbN        = neighbor->maxneighs;
 
+    int* is_inner = is_inner_buf;
+
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
         const int numneighs        = neighbor->numneigh[ci];
         const int numneighs_masked = neighbor->numneigh_masked[ci];
@@ -1160,7 +1170,6 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
         MD_SIMD_FLOAT zi3_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
 #endif
 
-        int is_inner[numneighs > 0 ? numneighs : 1];
         for (int k = 0; k < numneighs; k++) {
             int cj                 = neighs(neighbor->neighbors, ci, k, nbM, nbN);
             int cj_vec_base        = CJ_VECTOR3_BASE_INDEX(cj);
@@ -1333,9 +1342,10 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
     const int nbM        = atom->Nclusters_local;
     const int nbN        = neighbor->maxneighs;
 
+    int* is_inner = is_inner_buf;
+
     for (int sci = 0; sci < atom->Nclusters_local; sci++) {
         const int numneighs = neighbor->numneigh[sci];
-        int is_inner[numneighs > 0 ? numneighs : 1];
 
         for (int k = 0; k < numneighs; k++) {
             int cj          = neighs(neighbor->neighbors, sci, k, nbM, nbN);
