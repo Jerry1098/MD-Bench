@@ -78,18 +78,31 @@ echo "Baseline  : T=${base_T}  P=${base_P}"
 echo "Config A  : T=${a_T}     P=${a_P}"
 echo "Config B  : T=${b_T}     P=${b_P}"
 
-# --- Compare two values against a tolerance (relative error) -----------------
+# --- Compare two values against a tolerance ----------------------------------
 # Usage: check_rel <label> <got> <ref> <tol>
+# Relative error when |ref| >= EPS; otherwise falls back to absolute error
+# (tol interpreted as an absolute tolerance) to avoid division by zero / blow-up
+# on near-zero references such as baseline pressure in some configurations.
+EPS="1e-12"
 check_rel() {
     local label="$1" got="$2" ref="$3" tol="$4"
     local ok
-    ok=$(awk -v a="${got}" -v b="${ref}" -v t="${tol}" \
-        'BEGIN { d = a - b; if (d < 0) d = -d; print (d / (b < 0 ? -b : b) <= t) ? "1" : "0" }')
+    ok=$(awk -v a="${got}" -v b="${ref}" -v t="${tol}" -v eps="${EPS}" \
+        'BEGIN {
+            d = a - b; if (d < 0) d = -d;
+            ab = (b < 0 ? -b : b);
+            err = (ab < eps) ? d : d / ab;
+            print (err <= t) ? "1" : "0";
+         }')
     if [[ "${ok}" != "1" ]]; then
         local diff
-        diff=$(awk -v a="${got}" -v b="${ref}" \
-            'BEGIN { d = a - b; if (d < 0) d = -d; print d / (b < 0 ? -b : b) }')
-        echo "FAIL: ${label}: got ${got}, ref ${ref}, rel_err=${diff} > tol=${tol}" >&2
+        diff=$(awk -v a="${got}" -v b="${ref}" -v eps="${EPS}" \
+            'BEGIN {
+                d = a - b; if (d < 0) d = -d;
+                ab = (b < 0 ? -b : b);
+                print (ab < eps) ? d : d / ab;
+             }')
+        echo "FAIL: ${label}: got ${got}, ref ${ref}, err=${diff} > tol=${tol}" >&2
         return 1
     fi
 }

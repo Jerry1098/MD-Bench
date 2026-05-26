@@ -178,21 +178,21 @@ extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)
 
 extern "C" void cudaDeviceFree(Parameter* param)
 {
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_x));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_v));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_f));
+    GPUfree(cuda_cl_x);
+    GPUfree(cuda_cl_v);
+    GPUfree(cuda_cl_f);
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_t));
+    GPUfree(cuda_cl_t);
 #endif
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_numneigh));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_numneigh_inner));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_neighbors));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_natoms));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_border_map));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_jclusters_natoms));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_PBCx));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_PBCy));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_PBCz));
+    GPUfree(cuda_numneigh);
+    GPUfree(cuda_numneigh_inner);
+    GPUfree(cuda_neighbors);
+    GPUfree(cuda_natoms);
+    GPUfree(cuda_border_map);
+    GPUfree(cuda_jclusters_natoms);
+    GPUfree(cuda_PBCx);
+    GPUfree(cuda_PBCy);
+    GPUfree(cuda_PBCz);
 
     free(natoms);
     free(ngatoms);
@@ -948,9 +948,9 @@ be in the device comm->atom_recv[ineigh],            //int comm->firstrecv[iswap
 offset,    //int &buf[offset * size]);               //MD_FLOAT* --> need to be in the
 devic
     }
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_sendlist));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_buf_recv));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_buf_send));
+    GPUfree(cuda_sendlist);
+    GPUfree(cuda_buf_recv);
+    GPUfree(cuda_buf_send);
 }
 
 __global__ void packForwardCuda(MD_FLOAT* cuda_cl_x, int* cuda_jclusters_natoms, int nc,
