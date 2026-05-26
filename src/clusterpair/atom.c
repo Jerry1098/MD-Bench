@@ -966,9 +966,9 @@ void growPbc(Atom* atom)
             atom->NmaxGhost * sizeof(int),
             nold * sizeof(int));
     } else {
-        atom->PBCx = (int*)malloc(atom->NmaxGhost * sizeof(int));
-        atom->PBCy = (int*)malloc(atom->NmaxGhost * sizeof(int));
-        atom->PBCz = (int*)malloc(atom->NmaxGhost * sizeof(int));
+        atom->PBCx = (int*)allocate(ALIGNMENT, atom->NmaxGhost * sizeof(int));
+        atom->PBCy = (int*)allocate(ALIGNMENT, atom->NmaxGhost * sizeof(int));
+        atom->PBCz = (int*)allocate(ALIGNMENT, atom->NmaxGhost * sizeof(int));
     }
 }
 

@@ -66,7 +66,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
             int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
             MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
             MD_FLOAT* ci_f  = &atom->cl_f[ci_vec_base];
-            int numneighs   = neighbor->numneigh[ci];
+            int numneighs   = neighbor->numneigh_inner[ci];
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
@@ -242,8 +242,11 @@ double computeForceLJ2xnnHalfNeigh(
             int ci_vec_base      = CI_VECTOR3_BASE_INDEX(ci);
             MD_FLOAT* ci_x       = &atom->cl_x[ci_vec_base];
             MD_FLOAT* ci_f       = &atom->cl_f[ci_vec_base];
-            int numneighs        = neighbor->numneigh[ci];
-            int numneighs_masked = neighbor->numneigh_masked[ci];
+            int numneighs              = neighbor->numneigh_inner[ci];
+            int numneighs_masked       = neighbor->numneigh_masked[ci];
+            int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
+            int unmasked_inner_end     = numneighs_masked +
+                                         (numneighs - numneighs_inner_masked);
 
             MD_SIMD_FLOAT xi0_tmp = simd_real_load_h_dual(&ci_x[CL_X_INDEX_3D(0)]);
             MD_SIMD_FLOAT xi2_tmp = simd_real_load_h_dual(&ci_x[CL_X_INDEX_3D(2)]);
@@ -275,7 +278,7 @@ double computeForceLJ2xnnHalfNeigh(
             MD_SIMD_INT tbase2 = simd_i32_load_h_dual_scaled(&ci_t[2], atom->ntypes);
 #endif
 
-            for (int k = 0; k < numneighs_masked; k++) {
+            for (int k = 0; k < numneighs_inner_masked; k++) {
                 const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 // int imask = neighs_imask[k];
@@ -426,7 +429,7 @@ double computeForceLJ2xnnHalfNeigh(
                 }
             }
 
-            for (int k = numneighs_masked; k < numneighs; k++) {
+            for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
                 const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
@@ -614,8 +617,11 @@ double computeForceLJ2xnnFullNeigh(
             int ci_vec_base            = CI_VECTOR3_BASE_INDEX(ci);
             MD_FLOAT* ci_x             = &atom->cl_x[ci_vec_base];
             MD_FLOAT* ci_f             = &atom->cl_f[ci_vec_base];
-            const int numneighs        = neighbor->numneigh[ci];
-            const int numneighs_masked = neighbor->numneigh_masked[ci];
+            const int numneighs              = neighbor->numneigh_inner[ci];
+            const int numneighs_masked       = neighbor->numneigh_masked[ci];
+            const int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
+            const int unmasked_inner_end     = numneighs_masked +
+                                               (numneighs - numneighs_inner_masked);
 
             MD_SIMD_FLOAT xi0_tmp = simd_real_load_h_dual(&ci_x[CL_X_INDEX_3D(0)]);
             MD_SIMD_FLOAT xi2_tmp = simd_real_load_h_dual(&ci_x[CL_X_INDEX_3D(2)]);
@@ -646,7 +652,7 @@ double computeForceLJ2xnnFullNeigh(
             MD_SIMD_INT tbase2 = simd_i32_load_h_dual_scaled(&ci_t[2], atom->ntypes);
 #endif
 
-            for (int k = 0; k < numneighs_masked; k++) {
+            for (int k = 0; k < numneighs_inner_masked; k++) {
                 const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
@@ -783,7 +789,7 @@ double computeForceLJ2xnnFullNeigh(
                     cutoff_mask2);
             }
 
-            for (int k = numneighs_masked; k < numneighs; k++) {
+            for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
                 const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
@@ -971,8 +977,11 @@ double computeForceLJ4xnHalfNeigh(
             int ci_vec_base      = CI_VECTOR3_BASE_INDEX(ci);
             MD_FLOAT* ci_x       = &atom->cl_x[ci_vec_base];
             MD_FLOAT* ci_f       = &atom->cl_f[ci_vec_base];
-            int numneighs        = neighbor->numneigh[ci];
-            int numneighs_masked = neighbor->numneigh_masked[ci];
+            int numneighs              = neighbor->numneigh_inner[ci];
+            int numneighs_masked       = neighbor->numneigh_masked[ci];
+            int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
+            int unmasked_inner_end     = numneighs_masked +
+                                         (numneighs - numneighs_inner_masked);
 
             MD_SIMD_FLOAT xi0_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(0)]);
             MD_SIMD_FLOAT xi1_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(1)]);
@@ -1026,7 +1035,7 @@ double computeForceLJ4xnHalfNeigh(
             MD_SIMD_INT tbase3 = simd_i32_broadcast(ci_t[3] * atom->ntypes);
 #endif
 
-            for (int k = 0; k < numneighs_masked; k++) {
+            for (int k = 0; k < numneighs_inner_masked; k++) {
                 const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
@@ -1269,7 +1278,7 @@ double computeForceLJ4xnHalfNeigh(
                 }
             }
 
-            for (int k = numneighs_masked; k < numneighs; k++) {
+            for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
                 const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
@@ -1543,8 +1552,11 @@ double computeForceLJ4xnFullNeigh(
             int ci_vec_base      = CI_VECTOR3_BASE_INDEX(ci);
             MD_FLOAT* ci_x       = &atom->cl_x[ci_vec_base];
             MD_FLOAT* ci_f       = &atom->cl_f[ci_vec_base];
-            int numneighs        = neighbor->numneigh[ci];
-            int numneighs_masked = neighbor->numneigh_masked[ci];
+            int numneighs              = neighbor->numneigh_inner[ci];
+            int numneighs_masked       = neighbor->numneigh_masked[ci];
+            int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
+            int unmasked_inner_end     = numneighs_masked +
+                                         (numneighs - numneighs_inner_masked);
 
             MD_SIMD_FLOAT xi0_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(0)]);
             MD_SIMD_FLOAT xi1_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(1)]);
@@ -1598,7 +1610,7 @@ double computeForceLJ4xnFullNeigh(
             MD_SIMD_INT tbase3 = simd_i32_broadcast(ci_t[3] * atom->ntypes);
 #endif
 
-            for (int k = 0; k < numneighs_masked; k++) {
+            for (int k = 0; k < numneighs_inner_masked; k++) {
                 const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
@@ -1826,7 +1838,7 @@ double computeForceLJ4xnFullNeigh(
                     cutoff_mask3);
             }
 
-            for (int k = numneighs_masked; k < numneighs; k++) {
+            for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
                 const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];

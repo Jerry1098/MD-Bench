@@ -121,6 +121,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/sim_copper_fcc_regression.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_energy_lj on $(TARGET)"
 	@bash tests/regression_energy_lj.sh ./$(TARGET)
+	@echo "===>  RUNNING  test_double_cutoff on $(TARGET)"
+	@bash tests/test_double_cutoff.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_scheme_equiv (geometric)"
 	@bash tests/regression_scheme_equiv.sh
 	@echo "===>  RUNNING  regression_scheme_equiv (single)"

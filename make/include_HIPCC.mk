@@ -24,14 +24,17 @@ ANSI_CFLAGS += -std=c99
 ANSI_CFLAGS += -pedantic
 ANSI_CFLAGS += -Wextra
 
-#
-# Mi2XXX + Native
-#CFLAGS   = -O3 --offload-arch=gfx90a -march=native -ffast-math -funroll-loops # -fopenmp
-# Mi300A + Native
-CFLAGS   = -O3 -march=native -ffast-math -funroll-loops # -fopenmp
-#
+# Target GPU architecture must be provided explicitly on the command line or in the
+# environment, e.g.: make GPU_ARCH=gfx90a
+# Common values: gfx90a = MI250X, gfx940 = MI300A (APU), gfx942 = MI300X
+ifeq ($(strip $(GPU_ARCH)),)
+$(error GPU_ARCH is not set. Please specify a supported AMD GPU target, e.g. 'make GPU_ARCH=gfx90a')
+endif
+
+CFLAGS   = -O3 --offload-arch=$(GPU_ARCH) -march=native -ffast-math -funroll-loops # -fopenmp
+
 ASFLAGS  =  -masm=intel
 LFLAGS   =
-DEFINES  += -D_GNU_SOURCE -DCUDA_TARGET=1 -DNO_ZMM_INTRIN #-DLIKWID_PERFMON
 INCLUDES = $(LIKWID_INC) $(MPI_HOME) -I/opt/rocm/include
-LIBS     = -lm $(LIKWID_LIB) $(MPI_LIB) -lamdhip64 #-llikwid
+DEFINES  += -D_GNU_SOURCE -DCUDA_TARGET=1 -DNO_ZMM_INTRIN #-DLIKWID_PERFMON
+LIBS     = -lm $(LIKWID_LIB) $(MPI_LIB) -lamdhip64 -lroctx64 #-llikwid

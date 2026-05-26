@@ -1,5 +1,5 @@
 # Compiler tool chain (GCC/CLANG/ICC/ICX/ONEAPI/NVCC/HIPCC)
-TOOLCHAIN ?= ICX
+TOOLCHAIN ?= GCC
 # ISA of instruction code (X86/ARM)
 ISA ?= X86
 # Instruction set for instrinsic kernels (NONE/<X86-SIMD>/<ARM-SIMD>)
@@ -15,7 +15,7 @@ ENABLE_OPENMP ?= true
 # Enable MPI parallelization
 ENABLE_MPI ?= false
 # SP or DP
-DATA_TYPE ?= DP
+DATA_TYPE ?= SP
 # AOS or SOA
 ATOM_DATA_LAYOUT ?= AOS
 # Neighbor-lists data layout (auto/AOS/SOA)
@@ -52,7 +52,7 @@ USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)
 USE_REFERENCE_KERNEL ?= false
 # Use SIMD intrinsic kernels for force computation (true or false)
-USE_SIMD_KERNEL ?= true
+USE_SIMD_KERNEL ?= false
 # Enable XTC output (a GROMACS file format for trajectories)
 XTC_OUTPUT ?= false
 

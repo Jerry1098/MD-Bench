@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <allocate.h>
 #include <atom.h>
 #include <neighbor.h>
 #include <parameter.h>
@@ -228,7 +229,7 @@ void setupNeighbor(Parameter* param)
     if (stencil) {
         free(stencil);
     }
-    stencil = (int*)malloc(
+    stencil = (int*)allocate(ALIGNMENT,
         (2 * nextz + 1) * (2 * nexty + 1) * (2 * nextx + 1) * sizeof(int));
     nstencil   = 0;
     int kstart = -nextz;
@@ -250,11 +251,11 @@ void setupNeighbor(Parameter* param)
     if (bincount) {
         free(bincount);
     }
-    bincount = (int*)malloc(mbins * sizeof(int));
+    bincount = (int*)allocate(ALIGNMENT, mbins * sizeof(int));
     if (bins) {
         free(bins);
     }
-    bins = (int*)malloc(mbins * atoms_per_bin * sizeof(int));
+    bins = (int*)allocate(ALIGNMENT, mbins * atoms_per_bin * sizeof(int));
 }
 
 void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
@@ -267,8 +268,8 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         nmax = nall;
         if (neighbor->numneigh) free(neighbor->numneigh);
         if (neighbor->neighbors) free(neighbor->neighbors);
-        neighbor->numneigh  = (int*)malloc(nmax * sizeof(int));
-        neighbor->neighbors = (int*)malloc(nmax * neighbor->maxneighs * sizeof(int));
+        neighbor->numneigh  = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
     }
 
     /* bin local & ghost atoms */
@@ -339,7 +340,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             printf("RESIZE %d, PROC %d\n", neighbor->maxneighs, me);
             neighbor->maxneighs = new_maxneighs * 1.2;
             free(neighbor->neighbors);
-            neighbor->neighbors = (int*)malloc(
+            neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
         }
     }
@@ -456,7 +457,7 @@ void binatoms(Atom* atom)
         if (resize) {
             free(bins);
             atoms_per_bin *= 2;
-            bins = (int*)malloc(mbins * atoms_per_bin * sizeof(int));
+            bins = (int*)allocate(ALIGNMENT, mbins * atoms_per_bin * sizeof(int));
         }
     }
 
@@ -476,15 +477,15 @@ void sortAtom(Atom* atom)
     }
 
 #ifdef ATOM_POSITION_AOS
-    MD_FLOAT* new_x  = (MD_FLOAT*)malloc(Nmax * sizeof(MD_FLOAT) * 3);
-    MD_FLOAT* new_vx = (MD_FLOAT*)malloc(Nmax * sizeof(MD_FLOAT) * 3);
+    MD_FLOAT* new_x  = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT) * 3);
+    MD_FLOAT* new_vx = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT) * 3);
 #else
-    MD_FLOAT* new_x  = (MD_FLOAT*)malloc(Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_y  = (MD_FLOAT*)malloc(Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_z  = (MD_FLOAT*)malloc(Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_vx = (MD_FLOAT*)malloc(Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_vy = (MD_FLOAT*)malloc(Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_vz = (MD_FLOAT*)malloc(Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_x  = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_y  = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_z  = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_vx = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_vy = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_vz = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
 #endif
     MD_FLOAT* old_x  = atom->x;
     MD_FLOAT* old_y  = atom->y;
@@ -595,8 +596,8 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
     int Nlocal = atom->Nlocal;
     int Nghost = atom->Nghost;
     if (neighbor->listshell) free(neighbor->listshell);
-    neighbor->listshell = (int*)malloc(Nghost * sizeof(int));
-    int* listzone       = (int*)malloc(8 * Nghost * sizeof(int));
+    neighbor->listshell = (int*)allocate(ALIGNMENT, Nghost * sizeof(int));
+    int* listzone       = (int*)allocate(ALIGNMENT, 8 * Nghost * sizeof(int));
     int countAtoms[8]   = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     // Selecting ghost atoms for interaction
@@ -617,8 +618,8 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
     neighbor->Nshell = Nshell;
     if (neighbor->numNeighShell) free(neighbor->numNeighShell);
     if (neighbor->neighshell) free(neighbor->neighshell);
-    neighbor->neighshell    = (int*)malloc(Nshell * neighbor->maxneighs * sizeof(int));
-    neighbor->numNeighShell = (int*)malloc(Nshell * sizeof(int));
+    neighbor->neighshell    = (int*)allocate(ALIGNMENT, Nshell * neighbor->maxneighs * sizeof(int));
+    neighbor->numNeighShell = (int*)allocate(ALIGNMENT, Nshell * sizeof(int));
     int resize              = 1;
 
     while (resize) {
@@ -682,7 +683,7 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
 
         if (resize) {
             free(neighbor->neighshell);
-            neighbor->neighshell = (int*)malloc(
+            neighbor->neighshell = (int*)allocate(ALIGNMENT,
                 Nshell * neighbor->maxneighs * sizeof(int));
         }
     }

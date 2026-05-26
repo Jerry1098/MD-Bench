@@ -7,11 +7,14 @@
 
 #include <device.h>
 
+#ifdef __HIP_PLATFORM_AMD__
+#define FULL_WARP_MASK 0xffffffffffffffffULL
+#else
+#define FULL_WARP_MASK 0xffffffffU
+#endif
+
 extern "C" {
 #include <stdio.h>
-//---
-#include <cuda.h>
-#include <driver_types.h>
 //---
 #include <likwid-marker.h>
 //---
@@ -53,6 +56,7 @@ MD_FLOAT* cuda_cl_v;
 MD_FLOAT* cuda_cl_f;
 int* cuda_neighbors;
 int* cuda_numneigh;
+int* cuda_numneigh_inner;
 int* cuda_natoms;
 int* natoms;
 int* ngatoms;
@@ -105,8 +109,9 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
     cuda_PBCx      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     cuda_PBCy      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     cuda_PBCz      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    cuda_numneigh  = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
-    cuda_neighbors = (int*)allocateGPU(
+    cuda_numneigh       = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
+    cuda_numneigh_inner = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
+    cuda_neighbors      = (int*)allocateGPU(
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
     natoms  = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     ngatoms = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
@@ -152,6 +157,9 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
 #endif
 
     memcpyToGPU(cuda_numneigh, neighbor->numneigh, atom->Nclusters_local * sizeof(int));
+    memcpyToGPU(cuda_numneigh_inner,
+        neighbor->numneigh_inner,
+        atom->Nclusters_local * sizeof(int));
     memcpyToGPU(cuda_neighbors,
         neighbor->neighbors,
         atom->Nclusters_local * neighbor->maxneighs * sizeof(int));
@@ -170,20 +178,21 @@ extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)
 
 extern "C" void cudaDeviceFree(Parameter* param)
 {
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_x));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_v));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_f));
+    GPUfree(cuda_cl_x);
+    GPUfree(cuda_cl_v);
+    GPUfree(cuda_cl_f);
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_cl_t));
+    GPUfree(cuda_cl_t);
 #endif
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_numneigh));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_neighbors));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_natoms));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_border_map));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_jclusters_natoms));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_PBCx));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_PBCy));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_PBCz));
+    GPUfree(cuda_numneigh);
+    GPUfree(cuda_numneigh_inner);
+    GPUfree(cuda_neighbors);
+    GPUfree(cuda_natoms);
+    GPUfree(cuda_border_map);
+    GPUfree(cuda_jclusters_natoms);
+    GPUfree(cuda_PBCx);
+    GPUfree(cuda_PBCy);
+    GPUfree(cuda_PBCz);
 
     free(natoms);
     free(ngatoms);
@@ -278,7 +287,7 @@ __global__ void computeForceLJCudaFullNeigh(
     // It is very unlikely that M > 32, but we keep this check here to
     // avoid any issues in such situations
 #if CLUSTER_M <= 32
-    unsigned mask = 0xffffffff;
+    auto mask = FULL_WARP_MASK;
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
     for (int offset = CLUSTER_M / 2; offset > 0; offset /= 2) {
 #ifdef CUDA_TARGET
@@ -425,7 +434,7 @@ __global__ void computeForceLJCudaHalfNeigh(
     atomicAdd(&ci_f[CL_Y_INDEX_3D(cii)], fiy);
     atomicAdd(&ci_f[CL_Z_INDEX_3D(cii)], fiz);
 #else
-    unsigned mask = 0xffffffff;
+    auto mask = FULL_WARP_MASK;
     fix += __shfl_down_sync(mask, fix, CLUSTER_M);
     fiy += __shfl_up_sync(mask, fiy, CLUSTER_M);
     fiz += __shfl_down_sync(mask, fiz, CLUSTER_M);
@@ -617,6 +626,103 @@ extern "C" void updatePbcCUDA(Atom* atom, Parameter* param)
     cuda_assert("cudaUpdatePbc", cudaDeviceSynchronize());
 }
 
+__global__ void cudaPruneNeighbor(MD_FLOAT* cuda_cl_x,
+    int* cuda_numneigh,
+    int* cuda_numneigh_inner,
+    int* cuda_neighbors,
+    int Nclusters_local,
+    int maxneighs,
+    MD_FLOAT cutsq)
+{
+    unsigned int ci = blockDim.x * blockIdx.x + threadIdx.x;
+    if (ci >= Nclusters_local) {
+        return;
+    }
+
+    const int numneighs = cuda_numneigh[ci];
+    MD_FLOAT* ci_x      = &cuda_cl_x[CI_VECTOR_BASE_INDEX(ci)];
+    int lo              = 0;
+
+    for (int hi = 0; hi < numneighs; hi++) {
+        int cj         = neighs(cuda_neighbors, ci, hi, Nclusters_local, maxneighs);
+        MD_FLOAT* cj_x = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
+        int is_inner   = 0;
+
+        for (int cii = 0; cii < CLUSTER_M && !is_inner; cii++) {
+            MD_FLOAT xtmp = ci_x[CL_X_INDEX(cii)];
+            MD_FLOAT ytmp = ci_x[CL_Y_INDEX(cii)];
+            MD_FLOAT ztmp = ci_x[CL_Z_INDEX(cii)];
+            for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
+                MD_FLOAT delx = xtmp - cj_x[CL_X_INDEX(cjj)];
+                MD_FLOAT dely = ytmp - cj_x[CL_Y_INDEX(cjj)];
+                MD_FLOAT delz = ztmp - cj_x[CL_Z_INDEX(cjj)];
+                if (delx * delx + dely * dely + delz * delz < cutsq) {
+                    is_inner = 1;
+                    break;
+                }
+            }
+        }
+
+        if (is_inner) {
+            if (hi != lo) {
+                int t_cj = neighs(cuda_neighbors, ci, lo, Nclusters_local, maxneighs);
+                neighs(cuda_neighbors,
+                    ci,
+                    lo,
+                    Nclusters_local,
+                    maxneighs) = cj;
+                neighs(cuda_neighbors,
+                    ci,
+                    hi,
+                    Nclusters_local,
+                    maxneighs) = t_cj;
+            }
+            lo++;
+        }
+    }
+
+    cuda_numneigh_inner[ci] = lo;
+}
+
+extern "C" void pruneNeighborCUDASup(Parameter*, Atom*, Neighbor*);
+
+extern "C" void pruneNeighborCUDA(Parameter* param, Atom* atom, Neighbor* neighbor)
+{
+    DEBUG_MESSAGE("pruneNeighborCUDA start\n");
+
+    if (param->super_clustering) {
+        pruneNeighborCUDASup(param, atom, neighbor);
+        return;
+    }
+
+    if (param->outer_skin <= 0.0) {
+        // Defensive: caller already guards on this, but mirror outer counts in case it does not.
+        memcpyOnGPU(cuda_numneigh_inner,
+            cuda_numneigh,
+            atom->Nclusters_local * sizeof(int));
+        return;
+    }
+
+    const MD_FLOAT cut_inner = param->cutforce + param->skin;
+    const MD_FLOAT cutsq     = cut_inner * cut_inner;
+    const int threads_num    = 64;
+    const int N              = atom->Nclusters_local;
+    dim3 block_size          = dim3(threads_num, 1, 1);
+    dim3 grid_size           = dim3((N + threads_num - 1) / threads_num, 1, 1);
+
+    cudaPruneNeighbor<<<grid_size, block_size>>>(cuda_cl_x,
+        cuda_numneigh,
+        cuda_numneigh_inner,
+        cuda_neighbors,
+        atom->Nclusters_local,
+        neighbor->maxneighs,
+        cutsq);
+
+    cuda_assert("cudaPruneNeighbor", cudaPeekAtLastError());
+    cuda_assert("cudaPruneNeighbor", cudaDeviceSynchronize());
+    DEBUG_MESSAGE("pruneNeighborCUDA end\n");
+}
+
 extern "C" double computeForceLJCuda(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
@@ -655,7 +761,7 @@ extern "C" double computeForceLJCuda(
             cuda_cl_f,
             atom->Nclusters_local,
             atom->Nclusters_max,
-            cuda_numneigh,
+            cuda_numneigh_inner,
             cuda_neighbors,
             neighbor->maxneighs);
     } else {
@@ -675,7 +781,7 @@ extern "C" double computeForceLJCuda(
             cuda_cl_f,
             atom->Nclusters_local,
             atom->Nclusters_max,
-            cuda_numneigh,
+            cuda_numneigh_inner,
             cuda_neighbors,
             neighbor->maxneighs);
     }
@@ -733,6 +839,8 @@ extern "C" void growClustersCUDA(Atom* atom)
         cuda_jclusters_natoms = (int*)reallocateGPU(cuda_jclusters_natoms,
             atom->Nclusters_max * sizeof(int));
         cuda_numneigh         = (int*)reallocateGPU(cuda_numneigh,
+            atom->Nclusters_max * sizeof(int));
+        cuda_numneigh_inner   = (int*)reallocateGPU(cuda_numneigh_inner,
             atom->Nclusters_max * sizeof(int));
 
         free(natoms);
@@ -840,9 +948,9 @@ be in the device comm->atom_recv[ineigh],            //int comm->firstrecv[iswap
 offset,    //int &buf[offset * size]);               //MD_FLOAT* --> need to be in the
 devic
     }
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_sendlist));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_buf_recv));
-    cuda_assert("cudaDeviceFree", cudaFree(cuda_buf_send));
+    GPUfree(cuda_sendlist);
+    GPUfree(cuda_buf_recv);
+    GPUfree(cuda_buf_send);
 }
 
 __global__ void packForwardCuda(MD_FLOAT* cuda_cl_x, int* cuda_jclusters_natoms, int nc,

@@ -117,7 +117,9 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 }
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 {
-    return _mm256_cvtepi32_pd(_mm_cmplt_epi32(a, b));
+    // Sign-extend 4x32-bit comparison result to 4x64-bit, then cast to double mask.
+    // _mm256_cvtepi32_pd would convert -1 to -1.0 (0xBFF0...) rather than all-ones.
+    return _mm256_castsi256_pd(_mm256_cvtepi32_epi64(_mm_cmplt_epi32(a, b)));
 }
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
