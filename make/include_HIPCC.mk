@@ -24,9 +24,12 @@ ANSI_CFLAGS += -std=c99
 ANSI_CFLAGS += -pedantic
 ANSI_CFLAGS += -Wextra
 
-# Target GPU architecture (override on command line, e.g.: make GPU_ARCH=gfx90a)
-# gfx90a = MI250X, gfx940 = MI300A (APU), gfx942 = MI300X
-GPU_ARCH ?= gfx942
+# Target GPU architecture must be provided explicitly on the command line or in the
+# environment, e.g.: make GPU_ARCH=gfx90a
+# Common values: gfx90a = MI250X, gfx940 = MI300A (APU), gfx942 = MI300X
+ifeq ($(strip $(GPU_ARCH)),)
+$(error GPU_ARCH is not set. Please specify a supported AMD GPU target, e.g. 'make GPU_ARCH=gfx90a')
+endif
 
 CFLAGS   = -O3 --offload-arch=$(GPU_ARCH) -march=native -ffast-math -funroll-loops # -fopenmp
 
