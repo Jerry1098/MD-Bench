@@ -14,22 +14,33 @@ remote systems and how**.
 
 The scripts are identical on all branches; what you benchmark is the checkout.
 
-## Scripts
+## Scripts (build and run are separate phases)
+
+**The H200 system is ARM-based (Grace) — compile on the system itself**, not on an
+x86 login box. Build needs the toolchain (`module load cuda`/`rocm` or site
+equivalent); the run script does no compilation, so it works inside batch jobs.
 
 ```bash
-# Config matrix (LJ_COMB_RULE x SORT_ATOMS) + block-size sweep, interleaved, medians:
-TOOLCHAIN=NVCC  MAKE_ARGS="CUDA_ARCH=sm_90"  tests/bench_gpu_matrix.sh   # H200
-TOOLCHAIN=HIPCC MAKE_ARGS="GPU_ARCH=gfx942"  tests/bench_gpu_matrix.sh   # MI300X
+# 1. Build phase (on the target system, per branch):
+TOOLCHAIN=NVCC  MAKE_ARGS="CUDA_ARCH=sm_90 ISA=ARM" tests/bench_gpu_build.sh  # H200
+TOOLCHAIN=HIPCC MAKE_ARGS="GPU_ARCH=gfx942"         tests/bench_gpu_build.sh  # MI300X
+# -> bench-bin/{base,single,sort,single+sort} + build-info.txt (provenance)
+
+# 2. Run phase (config matrix + block-size sweep, interleaved, medians):
+tests/bench_gpu_run.sh
 # Knobs: NX (64 -> 1M atoms), STEPS, REPEATS, NT_LIST, CONFIGS, SLEEP (see header)
 
 # Energy per atom-update (poll power while running; use runs >= 30 s, exclusive node):
 tests/bench_gpu_energy.sh ./bench-bin/single+sort -n 2000 -nx 64 -ny 64 -nz 64
 ```
 
-## H200 (CUDA, `CUDA_ARCH=sm_90`)
+`bench-bin/` is per-branch working state (gitignored) — rebuild after switching
+branches, and check `bench-bin/build-info.txt` records the branch you meant.
 
-1. `main`: full matrix — `TOOLCHAIN=NVCC MAKE_ARGS="CUDA_ARCH=sm_90" NT_LIST="64 128 256 512 1024" tests/bench_gpu_matrix.sh`
-2. `gpu-opt`: same command. Headline = best `gpu-opt` config vs `main` base config.
+## H200 (CUDA, ARM host, `CUDA_ARCH=sm_90 ISA=ARM`)
+
+1. `main`: build, then full matrix — `NT_LIST="64 128 256 512 1024" tests/bench_gpu_run.sh`
+2. `gpu-opt`: same. Headline = best `gpu-opt` config vs `main` base config.
 3. Size scaling: repeat the best config with `NX=64` (1M) and `NX=128` (8M);
    131k (default `NX=32`) likely underutilizes 132 SMs — measure it anyway for the report.
 4. `gpu-opt-float4`: single run of the best config, same NX — keep only if it beats `gpu-opt`.
@@ -62,6 +73,7 @@ tests/bench_gpu_energy.sh ./bench-bin/single+sort -n 2000 -nx 64 -ny 64 -nz 64
 - Runs shorter than ~1000 steps are too noisy/short to validate reneighboring
   changes (docs/03); the matrix default STEPS=200 is fine for config ranking only.
 - `tests/test_lj_comb_rules.sh` rebuilds configs and deletes existing binaries —
-  rerun the matrix script (it rebuilds into `bench-bin/`) after it.
+  rerun `tests/bench_gpu_build.sh` after it (`bench-bin/` copies survive, but the
+  `MDBench-*` binaries in the repo root don't).
 - Compare "atom updates/us"; energies at steps 0/100/200 must match across configs
   (bit-identical except SORT_ATOMS, which changes summation order in the last digits).
