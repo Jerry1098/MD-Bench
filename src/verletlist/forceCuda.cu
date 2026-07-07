@@ -25,7 +25,30 @@ extern "C" {
 #include <util.h>
 }
 
+#if PRECISION == 1
+// Packed-float4 position gathers: one aligned 16 B load per neighbor instead of
+// three 4 B loads. Costs an extra pack kernel per step and 33% more bytes per
+// gather - loses on cache-hot gathers (RTX 4060 with SORT_ATOMS: -4%), retried
+// here for HBM3/larger-L2 GPUs. SP only.
+static float4* c_x4 = NULL;
+static int c_x4_nmax = 0;
+
+__global__ void packPositionsFloat4(DeviceAtom a, float4* x4, int nall)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nall) {
+        return;
+    }
+
+    DeviceAtom* atom = &a;
+    x4[i]            = make_float4(atom_x(i), atom_y(i), atom_z(i), 0.0f);
+}
+#endif
+
 __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
+#if PRECISION == 1
+    const float4* x4,
+#endif
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
@@ -44,9 +67,16 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     DeviceAtom* atom    = &a;
     const int numneighs = neigh_numneigh[i];
 
+#if PRECISION == 1
+    const float4 xi = __ldg(&x4[i]);
+    MD_FLOAT xtmp   = xi.x;
+    MD_FLOAT ytmp   = xi.y;
+    MD_FLOAT ztmp   = xi.z;
+#else
     MD_FLOAT xtmp = atom_x(i);
     MD_FLOAT ytmp = atom_y(i);
     MD_FLOAT ztmp = atom_z(i);
+#endif
 
     MD_FLOAT fix = 0;
     MD_FLOAT fiy = 0;
@@ -59,10 +89,17 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     for (int k = 0; k < numneighs; k++) {
         // __ldg: x/type are read-only here, but the compiler cannot prove
         // they don't alias fx, so it won't use the read-only cache on its own
-        int j         = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, neigh_maxneighs));
+        int j = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, neigh_maxneighs));
+#if PRECISION == 1
+        const float4 xj = __ldg(&x4[j]);
+        MD_FLOAT delx   = xtmp - xj.x;
+        MD_FLOAT dely   = ytmp - xj.y;
+        MD_FLOAT delz   = ztmp - xj.z;
+#else
         MD_FLOAT delx = xtmp - __ldg(&atom_x(j));
         MD_FLOAT dely = ytmp - __ldg(&atom_y(j));
         MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
+#endif
         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
@@ -266,6 +303,21 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
     double S             = getTimeStamp();
     LIKWID_MARKER_START("force");
 
+#if PRECISION == 1
+    if (!neighbor->half_neigh) {
+        const int nall = Nlocal + atom->Nghost;
+        if (c_x4_nmax < Nmax) {
+            c_x4_nmax = Nmax;
+            c_x4      = (float4*)reallocateGPU(c_x4, c_x4_nmax * sizeof(float4));
+        }
+        const int pack_blocks = ceil((float)nall / (float)num_threads_per_block);
+        packPositionsFloat4<<<pack_blocks, num_threads_per_block>>>(atom->d_atom,
+            c_x4,
+            nall);
+        cuda_assert("packPositionsFloat4", cudaPeekAtLastError());
+    }
+#endif
+
     if (neighbor->half_neigh) {
 #ifdef ATOM_POSITION_AOS
         memsetGPU(atom->d_atom.fx, 0, sizeof(MD_FLOAT) * Nmax * 3);
@@ -285,6 +337,9 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             atom->ntypes);
     } else {
         computeForceLJCudaFullNeigh<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
+#if PRECISION == 1
+            c_x4,
+#endif
             cutforcesq,
             sigma6,
             epsilon,
