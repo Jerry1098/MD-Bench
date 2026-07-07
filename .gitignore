@@ -68,3 +68,6 @@ MDBench-*
 .clangd
 .cache/clangd/index
 compile_commands.json
+
+# GPU benchmark script artifacts
+bench-bin/
