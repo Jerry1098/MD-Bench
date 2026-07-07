@@ -68,7 +68,8 @@ __global__ void computePbcUpdate(DeviceAtom a,
     atom_x(nlocal + i) = atom_x(border_map[i]) + PBCx[i] * xprd;
     atom_y(nlocal + i) = atom_y(border_map[i]) + PBCy[i] * yprd;
     atom_z(nlocal + i) = atom_z(border_map[i]) + PBCz[i] * zprd;
-    // Copy per-atom LJ parameters for geometric combination rule
+    // Copy per-atom type and LJ parameters for the combination rules
+    atom->type[nlocal + i]         = atom->type[border_map[i]];
     atom->sqrt_epsilon[nlocal + i] = atom->sqrt_epsilon[border_map[i]];
     atom->sigma3[nlocal + i]       = atom->sigma3[border_map[i]];
 }
@@ -80,12 +81,22 @@ void updatePbcCUDA(Atom* atom, Parameter* param, bool reneigh)
     const int num_threads_per_block = get_cuda_num_threads();
 
     if (reneigh) {
-        memcpyToGPU(atom->d_atom.x, atom->x, sizeof(MD_FLOAT) * atom->Nmax * 3);
-        memcpyToGPU(atom->d_atom.type, atom->type, sizeof(int) * atom->Nmax);
-        memcpyToGPU(atom->d_atom.sqrt_epsilon,
-            atom->sqrt_epsilon,
-            sizeof(MD_FLOAT) * atom->Nmax);
-        memcpyToGPU(atom->d_atom.sigma3, atom->sigma3, sizeof(MD_FLOAT) * atom->Nmax);
+        // Seed the device once: after that, device-side local data is always
+        // current (positions live on the GPU; type/sqrt_epsilon/sigma3 of local
+        // atoms never change in non-MPI runs, and this function is only called
+        // in non-MPI builds). Ghost entries of x/type/sqrt_epsilon/sigma3 are
+        // rewritten on the device by computePbcUpdate below, so re-uploading
+        // Nmax-sized host arrays every reneighboring is redundant PCIe traffic.
+        static bool device_seeded = false;
+        if (!device_seeded) {
+            device_seeded = true;
+            memcpyToGPU(atom->d_atom.x, atom->x, sizeof(MD_FLOAT) * atom->Nmax * 3);
+            memcpyToGPU(atom->d_atom.type, atom->type, sizeof(int) * atom->Nmax);
+            memcpyToGPU(atom->d_atom.sqrt_epsilon,
+                atom->sqrt_epsilon,
+                sizeof(MD_FLOAT) * atom->Nmax);
+            memcpyToGPU(atom->d_atom.sigma3, atom->sigma3, sizeof(MD_FLOAT) * atom->Nmax);
+        }
 
         if (c_NmaxGhost < NmaxGhost) {
             c_NmaxGhost = NmaxGhost;
