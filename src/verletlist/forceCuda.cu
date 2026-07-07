@@ -57,18 +57,20 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
 #endif
 
     for (int k = 0; k < numneighs; k++) {
-        int j         = neighs(neigh_neighbors, i, k, Nlocal, neigh_maxneighs);
-        MD_FLOAT delx = xtmp - atom_x(j);
-        MD_FLOAT dely = ytmp - atom_y(j);
-        MD_FLOAT delz = ztmp - atom_z(j);
+        // __ldg: x/type are read-only here, but the compiler cannot prove
+        // they don't alias fx, so it won't use the read-only cache on its own
+        int j         = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, neigh_maxneighs));
+        MD_FLOAT delx = xtmp - __ldg(&atom_x(j));
+        MD_FLOAT dely = ytmp - __ldg(&atom_y(j));
+        MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-        const int type_j          = atom->type[j];
+        const int type_j          = __ldg(&atom->type[j]);
         const int type_ij         = type_i * ntypes + type_j;
-        const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
-        const MD_FLOAT sigma6     = atom->sigma6[type_ij];
-        const MD_FLOAT epsilon    = atom->epsilon[type_ij];
+        const MD_FLOAT cutforcesq = __ldg(&atom->cutforcesq[type_ij]);
+        const MD_FLOAT sigma6     = __ldg(&atom->sigma6[type_ij]);
+        const MD_FLOAT epsilon    = __ldg(&atom->epsilon[type_ij]);
 #endif
 
         if (rsq < cutforcesq) {
