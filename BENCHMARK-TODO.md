@@ -11,6 +11,7 @@ remote systems and how**.
 | `main` | upstream + `CUDA_ARCH` make knob + `reallocateGPUKeep` fix + these scripts | **baseline** measurements |
 | `gpu-opt` | main + `__ldg` gathers (force/neighbor kernels) + skip redundant reneigh H2D pushes | **optimized** measurements |
 | `gpu-opt-float4` | gpu-opt + packed-float4 position gathers (SP only) | one-shot retry on H200 (was −4% locally; HBM3/larger L2 may flip it) |
+| `gpu-opt-device-reneigh` | gpu-opt + fully on-device setupPbc (CUB scan; only a 4-byte Nghost read-back per reneigh, no position D2H / map H2D) | candidate: ~+10% locally on RTX 4060, thermo output bit-identical to gpu-opt |
 
 The scripts are identical on all branches; what you benchmark is the checkout.
 

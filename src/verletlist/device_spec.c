@@ -43,6 +43,11 @@ void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->cutforcesq,
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
     memcpyToGPU(d_atom->type, atom->type, sizeof(int) * atom->Nmax);
+    // Per-atom LJ parameters for the combination rules; local entries never
+    // change in non-MPI runs and ghost entries are rewritten on device at
+    // every reneighboring (computePbcUpdate), so this upload happens once.
+    memcpyToGPU(d_atom->sqrt_epsilon, atom->sqrt_epsilon, sizeof(MD_FLOAT) * atom->Nmax);
+    memcpyToGPU(d_atom->sigma3, atom->sigma3, sizeof(MD_FLOAT) * atom->Nmax);
 
     DEBUG_MESSAGE("initDevice stop\n");
 }
