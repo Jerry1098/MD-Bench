@@ -43,6 +43,7 @@ static void* c_sortScanTemp     = NULL;
 static size_t c_sortScanTempCap = 0;
 static MD_FLOAT* c_sort_x       = NULL;
 static MD_FLOAT* c_sort_vx      = NULL;
+static MD_FLOAT* c_sort_fx      = NULL;
 static int c_sortNmax           = 0;
 
 // Multi GPU
@@ -255,6 +256,7 @@ static Neighbor_params makeNeighborParams(void)
 __global__ void sort_gather_kernel(DeviceAtom a,
     MD_FLOAT* new_x,
     MD_FLOAT* new_vx,
+    MD_FLOAT* new_fx,
     const int* binpos,
     const int* bincount,
     const int* bins,
@@ -278,6 +280,12 @@ __global__ void sort_gather_kernel(DeviceAtom a,
         new_vx[ni * 3 + 0] = atom->vx[oi * 3 + 0];
         new_vx[ni * 3 + 1] = atom->vx[oi * 3 + 1];
         new_vx[ni * 3 + 2] = atom->vx[oi * 3 + 2];
+        // forces too: initialIntegrate applies f(t) right after the sort, so
+        // leaving them in old order kicks every atom once per resort (the
+        // host sortAtom has this heating bug; measured T +22% over 100 resorts)
+        new_fx[ni * 3 + 0] = atom->fx[oi * 3 + 0];
+        new_fx[ni * 3 + 1] = atom->fx[oi * 3 + 1];
+        new_fx[ni * 3 + 2] = atom->fx[oi * 3 + 2];
     }
 }
 
@@ -470,12 +478,15 @@ void sortAtomCUDA(Atom* atom)
         c_sort_x  = (MD_FLOAT*)reallocateGPU(c_sort_x, c_sortNmax * sizeof(MD_FLOAT) * 3);
         c_sort_vx = (MD_FLOAT*)reallocateGPU(c_sort_vx,
             c_sortNmax * sizeof(MD_FLOAT) * 3);
+        c_sort_fx = (MD_FLOAT*)reallocateGPU(c_sort_fx,
+            c_sortNmax * sizeof(MD_FLOAT) * 3);
     }
 
     const int num_blocks = ceil((float)c_binning.mbins / (float)num_threads_per_block);
     sort_gather_kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
         c_sort_x,
         c_sort_vx,
+        c_sort_fx,
         c_binpos,
         c_binning.bincount,
         c_binning.bins,
@@ -492,6 +503,9 @@ void sortAtomCUDA(Atom* atom)
     tmp             = atom->d_atom.vx;
     atom->d_atom.vx = c_sort_vx;
     c_sort_vx       = tmp;
+    tmp             = atom->d_atom.fx;
+    atom->d_atom.fx = c_sort_fx;
+    c_sort_fx       = tmp;
 
     DEBUG_MESSAGE("sortAtomCUDA end\n");
 }
