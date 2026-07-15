@@ -377,7 +377,11 @@ int main(int argc, char** argv)
             double sortStart = getTimeStamp();
             DEBUG_MESSAGE("Resorting atoms\n");
             atom.Nghost = 0;
+#ifdef CUDA_TARGET
+            sortAtomCUDA(&atom);
+#else
             sortAtom(&atom);
+#endif
             timer[NEIGH] += getTimeStamp() - sortStart;
         }
 #endif

@@ -9,6 +9,7 @@
 #include <stdlib.h>
 //---
 
+#include <cub/cub.cuh>
 #include <device.h>
 #include <gpu_profiler.h>
 
@@ -36,6 +37,13 @@ static int* c_new_maxneighs = NULL;
 static Binning c_binning {
     .bincount = NULL, .bins = NULL, .mbins = 0, .atoms_per_bin = 0
 };
+// device-side sort scratch
+static int* c_binpos            = NULL;
+static void* c_sortScanTemp     = NULL;
+static size_t c_sortScanTempCap = 0;
+static MD_FLOAT* c_sort_x       = NULL;
+static MD_FLOAT* c_sort_vx      = NULL;
+static int c_sortNmax           = 0;
 
 // Multi GPU
 extern int pad_x, pad_y, pad_z;
@@ -214,6 +222,65 @@ __global__ void compute_neighborhood(DeviceAtom a,
     }
 }
 
+static Neighbor_params makeNeighborParams(void)
+{
+    Neighbor_params np { .xprd = xprd,
+        .yprd                  = yprd,
+        .zprd                  = zprd,
+        .bininvx               = bininvx,
+        .bininvy               = bininvy,
+        .bininvz               = bininvz,
+        .mbinxlo               = mbinxlo,
+        .mbinylo               = mbinylo,
+        .mbinzlo               = mbinzlo,
+        .nbinx                 = nbinx,
+        .nbiny                 = nbiny,
+        .nbinz                 = nbinz,
+        .mbinx                 = mbinx,
+        .mbiny                 = mbiny,
+        .mbinz                 = mbinz,
+        // MultiGPU
+        .pad_x    = pad_x,
+        .pad_y    = pad_y,
+        .pad_z    = pad_z,
+        .binsizex = binsizex,
+        .binsizey = binsizey,
+        .binsizez = binsizez };
+    return np;
+}
+
+/* gathers positions and velocities into bin order (one thread per bin,
+ * preserving the deterministic in-bin ordering from sort_bin_contents_kernel,
+ * so the permutation matches the host sortAtom exactly) */
+__global__ void sort_gather_kernel(DeviceAtom a,
+    MD_FLOAT* new_x,
+    MD_FLOAT* new_vx,
+    const int* binpos,
+    const int* bincount,
+    const int* bins,
+    int atoms_per_bin,
+    int mbins)
+{
+    const int mybin = blockIdx.x * blockDim.x + threadIdx.x;
+    if (mybin >= mbins) {
+        return;
+    }
+
+    DeviceAtom* atom = &a;
+    const int start  = binpos[mybin];
+    const int count  = bincount[mybin];
+    for (int k = 0; k < count; k++) {
+        const int ni       = start + k;
+        const int oi       = bins[mybin * atoms_per_bin + k];
+        new_x[ni * 3 + 0]  = atom_x(oi);
+        new_x[ni * 3 + 1]  = atom_y(oi);
+        new_x[ni * 3 + 2]  = atom_z(oi);
+        new_vx[ni * 3 + 0] = atom->vx[oi * 3 + 0];
+        new_vx[ni * 3 + 1] = atom->vx[oi * 3 + 1];
+        new_vx[ni * 3 + 2] = atom->vx[oi * 3 + 2];
+    }
+}
+
 void binatoms_cuda(Atom* atom,
     Binning* c_binning,
     int* c_resize_needed,
@@ -289,28 +356,7 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
             c_binning.mbins * c_binning.atoms_per_bin * sizeof(int));
     }
 
-    Neighbor_params np { .xprd = xprd,
-        .yprd                  = yprd,
-        .zprd                  = zprd,
-        .bininvx               = bininvx,
-        .bininvy               = bininvy,
-        .bininvz               = bininvz,
-        .mbinxlo               = mbinxlo,
-        .mbinylo               = mbinylo,
-        .mbinzlo               = mbinzlo,
-        .nbinx                 = nbinx,
-        .nbiny                 = nbiny,
-        .nbinz                 = nbinz,
-        .mbinx                 = mbinx,
-        .mbiny                 = mbiny,
-        .mbinz                 = mbinz,
-        // MultiGPU
-        .pad_x    = pad_x,
-        .pad_y    = pad_y,
-        .pad_z    = pad_z,
-        .binsizex = binsizex,
-        .binsizey = binsizey,
-        .binsizez = binsizez };
+    Neighbor_params np = makeNeighborParams();
 
     if (c_resize_needed == NULL) {
         c_resize_needed = (int*)allocateGPU(sizeof(int));
@@ -364,4 +410,88 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
 
     GPU_PROFILE_STOP();
     DEBUG_MESSAGE("buildNeighborCUDA end\n");
+}
+
+/* device-resident sortAtom: same bin-order permutation as the host sortAtom
+ * (neighbor.c), but positions/velocities never leave the device. Caller has
+ * set Nghost = 0; neighbor list and ghosts are rebuilt in the same step.
+ * ponytail: type/epsilon/sigma6 not permuted, matches host sortAtom; three
+ * more gather lines if multi-type + sort is ever benchmarked */
+void sortAtomCUDA(Atom* atom)
+{
+    DEBUG_MESSAGE("sortAtomCUDA begin\n");
+    const int num_threads_per_block = get_cuda_num_threads();
+
+    // defensive init: in practice buildNeighborCUDA has run during setup
+    if (c_binning.mbins == 0) {
+        c_binning.mbins         = mbins;
+        c_binning.atoms_per_bin = atoms_per_bin;
+        c_binning.bincount      = (int*)allocateGPU(c_binning.mbins * sizeof(int));
+        c_binning.bins          = (int*)allocateGPU(
+            c_binning.mbins * c_binning.atoms_per_bin * sizeof(int));
+    }
+
+    if (c_resize_needed == NULL) {
+        c_resize_needed = (int*)allocateGPU(sizeof(int));
+    }
+
+    Neighbor_params np = makeNeighborParams();
+
+    /* bins local atoms only (Nghost == 0) and sorts each bin's contents */
+    binatoms_cuda(atom, &c_binning, c_resize_needed, &np, num_threads_per_block);
+
+    if (c_binpos == NULL) {
+        c_binpos = (int*)allocateGPU(c_binning.mbins * sizeof(int));
+    }
+
+    // exclusive scan: bincount -> per-bin write offsets
+    size_t tempBytes = 0;
+    cuda_assert("sortAtom.scanSize",
+        cub::DeviceScan::ExclusiveSum(NULL,
+            tempBytes,
+            c_binning.bincount,
+            c_binpos,
+            c_binning.mbins));
+    if (tempBytes > c_sortScanTempCap) {
+        c_sortScanTempCap = tempBytes;
+        c_sortScanTemp    = reallocateGPU(c_sortScanTemp, tempBytes);
+    }
+    cuda_assert("sortAtom.scan",
+        cub::DeviceScan::ExclusiveSum(c_sortScanTemp,
+            tempBytes,
+            c_binning.bincount,
+            c_binpos,
+            c_binning.mbins));
+
+    // scratch fully rewritten below (up to Nlocal; the rest is rebuilt as
+    // ghosts before any read), so plain reallocateGPU suffices
+    if (c_sortNmax < atom->Nmax) {
+        c_sortNmax = atom->Nmax;
+        c_sort_x  = (MD_FLOAT*)reallocateGPU(c_sort_x, c_sortNmax * sizeof(MD_FLOAT) * 3);
+        c_sort_vx = (MD_FLOAT*)reallocateGPU(c_sort_vx,
+            c_sortNmax * sizeof(MD_FLOAT) * 3);
+    }
+
+    const int num_blocks = ceil((float)c_binning.mbins / (float)num_threads_per_block);
+    sort_gather_kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
+        c_sort_x,
+        c_sort_vx,
+        c_binpos,
+        c_binning.bincount,
+        c_binning.bins,
+        c_binning.atoms_per_bin,
+        c_binning.mbins);
+    cuda_assert("sort_gather", cudaPeekAtLastError());
+    cuda_assert("sort_gather", cudaDeviceSynchronize());
+
+    // swap sorted buffers in; both are Nmax*3-sized, so a later growAtom
+    // (reallocateGPUKeep) stays correct
+    MD_FLOAT* tmp   = atom->d_atom.x;
+    atom->d_atom.x  = c_sort_x;
+    c_sort_x        = tmp;
+    tmp             = atom->d_atom.vx;
+    atom->d_atom.vx = c_sort_vx;
+    c_sort_vx       = tmp;
+
+    DEBUG_MESSAGE("sortAtomCUDA end\n");
 }
